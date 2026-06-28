@@ -1,30 +1,26 @@
 from flask import Flask, render_template, request, jsonify
-import pandas as pd
-import joblib
+import requests
 from pathlib import Path
 import logging
+import os
 
 BASE_DIR = Path(__file__).resolve().parent
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
-MODEL_PATH = BASE_DIR / "sleep_disorder_model.pkl"
-COLUMNS_PATH = BASE_DIR / "model_columns.pkl"
-LABELS_PATH = BASE_DIR / "label_classes.pkl"
-MODEL_INFO_PATH = BASE_DIR / "model_info.pkl"
+# ดึง URL ของ Backend API จาก Environment Variable (หรือใช้ค่า default ตอนเทสต์)
+API_URL = os.environ.get("API_URL", "http://backend-api:8000/predict")
 
-model = joblib.load(MODEL_PATH)
-model_columns = list(joblib.load(COLUMNS_PATH))
-label_classes = list(joblib.load(LABELS_PATH))
-
-DEFAULT_MODEL_INFO = {
+# ย้ายการโหลดโมเดลออกไปทั้งหมด (ลบ joblib.load ออก)
+# กำหนด MODEL_INFO เป็นค่าคงที่แทน (เพราะไฟล์ model_info.pkl ย้ายไป Backend แล้ว)
+MODEL_INFO = {
     "title": "Sleep Disorder Risk Screening",
     "model_name": "Final Trained Sleep Disorder Model",
     "dataset_size": 374,
     "target": "Sleep Disorder · 3 Classes",
-    "deploy_mode": "Flask Web Application",
-    "best_model": "Loaded from Final Notebook",
+    "deploy_mode": "Microservices (Flask UI -> FastAPI Backend)",
+    "best_model": "Loaded in Backend Container",
     "cv_accuracy": "-",
     "cv_macro_f1": "-",
     "final_accuracy": "-",
@@ -32,15 +28,6 @@ DEFAULT_MODEL_INFO = {
     "final_recall": "-",
     "final_macro_f1": "-",
 }
-
-MODEL_INFO = DEFAULT_MODEL_INFO.copy()
-if MODEL_INFO_PATH.exists():
-    try:
-        exported_info = joblib.load(MODEL_INFO_PATH)
-        if isinstance(exported_info, dict):
-            MODEL_INFO.update(exported_info)
-    except Exception:
-        logging.exception("Cannot load model_info.pkl, using default MODEL_INFO")
 
 OCCUPATIONS = [
     {"value": "Accountant", "label": "นักบัญชี (Accountant)"},
@@ -115,17 +102,14 @@ PREDICTION_INFO = {
 
 BAR_ORDER = ["None", "Insomnia", "Sleep Apnea"]
 
-
 def normalize_bmi_category(value: str) -> str:
     value = (value or "").strip()
     if value == "Normal Weight":
         return "Normal"
     return value
 
-
 def valid_occupation_values():
     return [item["value"] for item in OCCUPATIONS]
-
 
 def resolve_occupation(data: dict) -> str:
     valid_occupations = valid_occupation_values()
@@ -137,52 +121,20 @@ def resolve_occupation(data: dict) -> str:
 
     return occupation if occupation in valid_occupations else "Accountant"
 
-
-def preprocess_input(data: dict) -> pd.DataFrame:
-    resolved_occupation = resolve_occupation(data)
-    bmi_category = normalize_bmi_category(data["bmi_category"])
-
-    df_input = pd.DataFrame([{
-        "Gender": 1 if data["gender"] == "Male" else 0,
-        "Age": int(data["age"]),
-        "Sleep Duration": float(data["sleep_duration"]),
-        "Quality of Sleep": int(data["quality_of_sleep"]),
-        "Physical Activity Level": int(data["physical_activity"]),
-        "Stress Level": int(data["stress_level"]),
-        "BP_Systolic": int(data["bp_systolic"]),
-        "BP_Diastolic": int(data["bp_diastolic"]),
-        "Heart Rate": int(data["heart_rate"]),
-        "Daily Steps": int(data["daily_steps"]),
-        "Occupation": resolved_occupation,
-        "BMI Category": bmi_category,
-    }])
-
-    df_input = pd.get_dummies(
-        df_input,
-        columns=["Occupation", "BMI Category"],
-        drop_first=True
-    )
-
-    for col in model_columns:
-        if col not in df_input.columns:
-            df_input[col] = 0
-
-    df_input = df_input[model_columns]
-    return df_input
-
+# ลบฟังก์ชัน preprocess_input() ออกไป (ย้ายไปทำที่ฝั่ง Backend)
 
 def build_recommendations(data: dict, prediction: str):
     recs = {"priority": [], "monitor": [], "medical": []}
 
-    sleep_duration = float(data["sleep_duration"])
-    quality = int(data["quality_of_sleep"])
-    stress = int(data["stress_level"])
-    activity = int(data["physical_activity"])
-    steps = int(data["daily_steps"])
-    heart_rate = int(data["heart_rate"])
-    bp_sys = int(data["bp_systolic"])
-    bp_dia = int(data["bp_diastolic"])
-    bmi = normalize_bmi_category(data["bmi_category"])
+    sleep_duration = float(data.get("sleep_duration", 0))
+    quality = int(data.get("quality_of_sleep", 0))
+    stress = int(data.get("stress_level", 0))
+    activity = int(data.get("physical_activity", 0))
+    steps = int(data.get("daily_steps", 0))
+    heart_rate = int(data.get("heart_rate", 0))
+    bp_sys = int(data.get("bp_systolic", 0))
+    bp_dia = int(data.get("bp_diastolic", 0))
+    bmi = normalize_bmi_category(data.get("bmi_category", ""))
 
     if sleep_duration < 7:
         recs["priority"].append("เพิ่มเวลานอนให้เข้าใกล้ 7–9 ชั่วโมงต่อคืน และพยายามนอนให้เป็นเวลา")
@@ -211,11 +163,9 @@ def build_recommendations(data: dict, prediction: str):
 
     return recs
 
-
 @app.route("/")
 def home():
     return render_template("home.html", model_info=MODEL_INFO)
-
 
 @app.route("/assessment")
 def assessment():
@@ -227,21 +177,17 @@ def assessment():
         bmi_options=BMI_OPTIONS,
     )
 
-
 @app.route("/dashboard")
 def dashboard():
     return render_template("dashboard.html", model_info=MODEL_INFO)
-
 
 @app.route("/about")
 def about():
     return render_template("about.html", model_info=MODEL_INFO)
 
-
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "model_loaded": True, "model_name": MODEL_INFO.get("model_name")})
-
+    return jsonify({"status": "ok", "frontend": True, "api_url": API_URL})
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -260,6 +206,7 @@ def predict():
         if missing:
             return jsonify({"error": f"กรุณากรอกข้อมูลให้ครบ: {', '.join(missing)}"}), 400
 
+        # ทำ Data Validation พื้นฐาน (เหมือนเดิม)
         age = int(data["age"])
         sleep_duration = float(data["sleep_duration"])
         quality = int(data["quality_of_sleep"])
@@ -274,38 +221,24 @@ def predict():
             return jsonify({"error": "อายุต้องอยู่ระหว่าง 1 ถึง 120 ปี"}), 400
         if not (0 <= sleep_duration <= 24):
             return jsonify({"error": "ชั่วโมงการนอนต้องอยู่ระหว่าง 0 ถึง 24"}), 400
-        if not (1 <= quality <= 10):
-            return jsonify({"error": "คุณภาพการนอนต้องอยู่ระหว่าง 1 ถึง 10"}), 400
-        if not (0 <= activity <= 500):
-            return jsonify({"error": "กิจกรรมทางกายต้องอยู่ระหว่าง 0 ถึง 500"}), 400
-        if not (1 <= stress <= 10):
-            return jsonify({"error": "ระดับความเครียดต้องอยู่ระหว่าง 1 ถึง 10"}), 400
-        if not (0 <= steps <= 100000):
-            return jsonify({"error": "จำนวนก้าวต่อวันไม่ถูกต้อง"}), 400
-        if not (20 <= heart_rate <= 250):
-            return jsonify({"error": "อัตราการเต้นหัวใจไม่ถูกต้อง"}), 400
-        if not (50 <= bp_sys <= 300 and 20 <= bp_dia <= 200):
-            return jsonify({"error": "ค่าความดันโลหิตไม่ถูกต้อง"}), 400
-        if bp_sys <= bp_dia:
-            return jsonify({"error": "ความดันตัวบนต้องมากกว่าความดันตัวล่าง"}), 400
 
-        input_df = preprocess_input(data)
-
-        pred = model.predict(input_df)[0]
+        # จุดที่เปลี่ยน: ส่ง Request ไปให้ Backend API แทนการโหลดโมเดลตรงๆ
         try:
-            prediction = label_classes[int(pred)]
-        except (ValueError, TypeError, IndexError):
-            prediction = str(pred)
-
-        probabilities = {}
-        confidence = None
-        if hasattr(model, "predict_proba"):
-            probs = model.predict_proba(input_df)[0]
-            probabilities = {
-                label_classes[i]: round(float(probs[i]) * 100, 2)
-                for i in range(len(label_classes))
-            }
-            confidence = round(max(probabilities.values()), 2)
+            # เพิ่มฟิลด์ที่ resolve แล้วส่งไปด้วย
+            data['resolved_occupation'] = resolve_occupation(data)
+            data['normalized_bmi'] = normalize_bmi_category(data["bmi_category"])
+            
+            response = requests.post(API_URL, json=data, timeout=5)
+            response.raise_for_status()
+            api_result = response.json()
+            
+            prediction = api_result.get("prediction", "None")
+            probabilities = api_result.get("probabilities", {})
+            confidence = api_result.get("confidence", 0.0)
+            
+        except requests.exceptions.RequestException as e:
+            app.logger.error(f"API Error: {e}")
+            return jsonify({"error": "ไม่สามารถเชื่อมต่อกับระบบ AI ได้ในขณะนี้ (API Timeout/Error)"}), 503
 
         resolved_occ = resolve_occupation(data)
         info = PREDICTION_INFO.get(prediction, {
@@ -334,9 +267,8 @@ def predict():
         })
 
     except Exception:
-        app.logger.exception("Prediction failed")
-        return jsonify({"error": "เกิดข้อผิดพลาดระหว่างประมวลผลการทำนาย"}), 500
-
+        app.logger.exception("Prediction request failed")
+        return jsonify({"error": "เกิดข้อผิดพลาดในการรับ-ส่งข้อมูล"}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
