@@ -1,6 +1,6 @@
 # CT519 Project: Web-ML with Docker Compose (Sleep Disorder Prediction)
 
-โปรเจกต์นี้เป็นการนำโมเดล Machine Learning จากวิชา CT663 สำหรับทำนายความเสี่ยงภาวะผิดปกติการนอนหลับ (Sleep Disorder) มาให้บริการในรูปแบบ Web Application โดยออกแบบสถาปัตยกรรมระบบเป็นแบบ **Microservices** และบริหารจัดการ Container ทั้งหมดด้วย **Docker Compose**
+โปรเจกต์นี้เป็นการนำโมเดล Machine Learning จากวิชา CT663 สำหรับทำนายความเสี่ยงภาวะผิดปกติการนอนหลับ (Sleep Disorder) มาให้บริการในรูปแบบ Web Application โดยออกแบบสถาปัตยกรรมระบบเป็นแบบ **Microservices** และบริหารจัดการ Container ทั้งหมดด้วย **Docker Compose** โดยทำการปรับแก้ไขไฟล์
 
 ---
 
