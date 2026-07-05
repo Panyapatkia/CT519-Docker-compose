@@ -44,3 +44,8 @@
 3. รันคำสั่งต่อไปนี้เพื่อสร้างและเปิดใช้งาน Containers:
    ```bash
    docker compose up -d --build
+4. หลังจาก Deploy ระบบเรียบร้อยแล้ว สามารถเข้าใช้งานได้ผ่าน URL ดังนี้
+• Frontend (ส่วนติดต่อผู้ใช้งาน)
+  http://<IP-Server>:5000
+• Backend (เอกสาร API และหน้าทดสอบการเรียกใช้งาน Swagger UI)
+  http://<IP-Server>:8000/docs
