@@ -49,3 +49,11 @@
   http://<IP-Server>:5000
 • Backend (เอกสาร API และหน้าทดสอบการเรียกใช้งาน Swagger UI)
   http://<IP-Server>:8000/docs
+
+## การทำงานของระบบ
+1. ผู้ใช้งานเปิด Web Application ผ่าน Frontend
+2. กรอกข้อมูลสำหรับทำนายผล
+3. Frontend ส่งข้อมูลไปยัง Backend ผ่าน REST API
+4. Backend โหลด Machine Learning Model และประมวลผล
+5. Backend ส่งผลลัพธ์กลับเป็น JSON
+6. Frontend แสดงผลการทำนายแก่ผู้ใช้งาน
